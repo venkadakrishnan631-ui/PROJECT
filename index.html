@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Edge-AI Predictive Maintenance · Digital Twin</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0d1117; --bg2:#161b22; --card:#1c2330; --border:#2a3342;
+  --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff;
+  --ok:#3fb950; --warn:#d29922; --danger:#f85149;
+  --shadow:0 4px 20px rgba(0,0,0,.35); --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  background:radial-gradient(1200px 600px at 10% 0%,#1a2233 0%,var(--bg) 55%);
+  color:var(--text); min-height:100vh; padding-bottom:40px;
+}
+.topbar{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:18px 28px;border-bottom:1px solid var(--border);
+  background:rgba(13,17,23,.75);backdrop-filter:blur(8px);
+  position:sticky;top:0;z-index:20;
+}
+.brand{display:flex;gap:14px;align-items:center}
+.logo{font-size:34px;filter:drop-shadow(0 0 6px #58a6ff55)}
+.brand h1{font-size:20px;font-weight:700;letter-spacing:.3px}
+.brand p{font-size:12px;color:var(--muted);margin-top:2px}
+.conn{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}
+.dot.on{background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.dot.off{background:var(--danger)}
+.alarm-banner{
+  margin:14px 28px 0;background:linear-gradient(90deg,#4a1414,#7a1a1a);
+  border:1px solid var(--danger);border-radius:var(--radius);
+  padding:12px 20px;font-weight:600;display:flex;align-items:center;gap:12px;
+  animation:pulse 1.2s ease-in-out infinite;
+}
+.alarm-banner.hidden{display:none}
+.alarm-icon{font-size:20px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.65}}
+main{padding:20px 28px;display:flex;flex-direction:column;gap:20px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:900px){.grid-2{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow)}
+.card h2{font-size:15px;font-weight:600;margin-bottom:14px;letter-spacing:.3px}
+.twin-card{display:flex;flex-direction:column}
+.twin-stage{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center}
+@media(max-width:600px){.twin-stage{grid-template-columns:1fr}}
+.motor-svg{width:100%;max-width:260px;margin:0 auto;display:block}
+.motor-svg .base{fill:#2a3342}
+.motor-svg .body{fill:#39465c;stroke:#4a5a76;stroke-width:1.5}
+.motor-svg .fins rect{fill:#4a5a76}
+.motor-svg .shaft{fill:#6a7a99}
+.motor-svg .rotorHub{fill:#58a6ff;filter:drop-shadow(0 0 6px #58a6ff88)}
+.motor-svg .blade{fill:#2a3342}
+.motor-svg .rotor{transform-origin:110px 110px;transform-box:fill-box;animation:spin 3s linear infinite}
+.motor-svg .rotor.slow{animation-duration:8s}
+.motor-svg .rotor.stop{animation:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.motor-svg .glow{fill:none;stroke-width:2;opacity:.55}
+.motor-svg .glow.ok{stroke:var(--ok);filter:drop-shadow(0 0 8px var(--ok))}
+.motor-svg .glow.warn{stroke:var(--warn);filter:drop-shadow(0 0 8px var(--warn))}
+.motor-svg .glow.bad{stroke:var(--danger);filter:drop-shadow(0 0 8px var(--danger));animation:pulse 1s ease-in-out infinite}
+.twin-info{display:flex;flex-direction:column;gap:8px}
+.twin-row{display:flex;justify-content:space-between;align-items:center;background:var(--bg2);border-radius:8px;padding:10px 14px;font-size:13px}
+.twin-row b{font-size:14px}
+.twin-row b.ok{color:var(--ok)}
+.twin-row b.warn{color:var(--warn)}
+.twin-row b.bad{color:var(--danger)}
+.ai-panel{display:flex;flex-direction:column;gap:10px}
+.ai-health-bar{height:12px;background:var(--bg2);border-radius:6px;overflow:hidden;border:1px solid var(--border)}
+.ai-health-fill{height:100%;width:100%;background:linear-gradient(90deg,var(--ok),#2ea043);transition:width .4s,background .4s}
+.ai-health-lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:4px}
+.ai-row{display:flex;justify-content:space-between;font-size:13px;padding:8px 12px;background:var(--bg2);border-radius:8px}
+.ai-row b{color:var(--accent)}
+.ai-note{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4}
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media(max-width:900px){.tiles{grid-template-columns:1fr 1fr}}
+.tile{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+.tile.fault{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger),0 4px 20px rgba(248,81,73,.25)}
+.tile-head{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);letter-spacing:.4px;text-transform:uppercase}
+.tile-head .unit{color:var(--accent)}
+.tile-val{font-size:32px;font-weight:700;margin:10px 0 12px;letter-spacing:-.5px}
+.tile-bar{height:6px;background:var(--bg2);border-radius:3px;overflow:hidden}
+.tile-bar>div{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),#79b8ff);transition:width .3s,background .3s}
+.tile.fault .tile-bar>div{background:linear-gradient(90deg,var(--danger),#ff7b72)}
+.log-controls{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.btn{background:var(--bg2);color:var(--text);border:1px solid var(--border);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;transition:.2s}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.log-count{font-size:12px;color:var(--muted)}
+.log-table-wrap{max-height:320px;overflow-y:auto;border-radius:8px;border:1px solid var(--border)}
+.log-table{width:100%;border-collapse:collapse;font-size:12px}
+.log-table th,.log-table td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+.log-table th{background:var(--bg2);color:var(--muted);font-weight:500;position:sticky;top:0}
+.log-table tr:last-child td{border-bottom:none}
+.log-table td.empty{text-align:center;color:var(--muted)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.badge.ok{background:rgba(63,185,80,.15);color:var(--ok)}
+.badge.warn{background:rgba(210,153,34,.15);color:var(--warn)}
+.badge.bad{background:rgba(248,81,73,.15);color:var(--danger)}
+.foot{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);padding:4px 4px 0}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">⚙️</span>
+    <div>
+      <h1>Edge-AI Predictive Maintenance</h1>
+      <p>Multimodal Digital Twin · Industrial Motor Systems</p>
+    </div>
+  </div>
+  <div class="conn">
+    <span id="connDot" class="dot off"></span>
+    <span id="connText">Connecting…</span>
+  </div>
+</header>
+
+<div id="alarmBanner" class="alarm-banner hidden">
+  <span class="alarm-icon">⚠️</span>
+  <span id="alarmText">FAULT DETECTED</span>
+</div>
+
+<main>
+
+  <section class="grid-2">
+    <div class="card twin-card">
+      <h2>Digital Twin — Motor</h2>
+      <div class="twin-stage">
+        <svg viewBox="0 0 220 180" class="motor-svg">
+          <rect x="20" y="150" width="180" height="12" rx="3" class="base"/>
+          <rect x="40" y="70" width="140" height="80" rx="10" class="body"/>
+          <g class="fins">
+            <rect x="48" y="60" width="124" height="6" rx="2"/>
+            <rect x="48" y="52" width="124" height="6" rx="2"/>
+            <rect x="48" y="44" width="124" height="6" rx="2"/>
+          </g>
+          <rect x="180" y="95" width="25" height="14" rx="3" class="shaft"/>
+          <g id="rotor" class="rotor">
+            <circle cx="110" cy="110" r="28" class="rotorHub"/>
+            <path d="M110 82 L118 108 L110 138 L102 108 Z" class="blade"/>
+            <path d="M110 82 L118 108 L110 138 L102 108 Z" class="blade" transform="rotate(90 110 110)"/>
+            <path d="M110 82 L118 108 L110 138 L102 108 Z" class="blade" transform="rotate(180 110 110)"/>
+            <path d="M110 82 L118 108 L110 138 L102 108 Z" class="blade" transform="rotate(270 110 110)"/>
+          </g>
+          <circle id="statusGlow" cx="110" cy="110" r="42" class="glow ok"/>
+        </svg>
+        <div class="twin-info">
+          <div class="twin-row"><span>State</span><b id="twinState">NORMAL</b></div>
+          <div class="twin-row"><span>Relay</span><b id="twinRelay">ON</b></div>
+          <div class="twin-row"><span>Buzzer</span><b id="twinBuzzer">OFF</b></div>
+          <div class="twin-row"><span>Health</span><b id="twinHealth">100%</b></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Edge-AI Verdict</h2>
+      <div class="ai-panel">
+        <div class="ai-health">
+          <div class="ai-health-bar"><div id="healthBar" class="ai-health-fill"></div></div>
+          <div class="ai-health-lbl"><span>Health Index</span><b id="healthPct">—</b></div>
+        </div>
+        <div class="ai-row"><span>RUL estimate</span><b id="rulValue">—</b></div>
+        <div class="ai-row"><span>Anomaly score</span><b id="anomalyScore">—</b></div>
+        <div class="ai-row"><span>Dominant fault</span><b id="dominantFault">—</b></div>
+        <div class="ai-row"><span>Last update</span><b id="lastUpdate">—</b></div>
+        <div class="ai-note">Edge inference runs in-browser using z-score + weighted multimodal fusion.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tiles">
+    <div class="tile" id="tileCurrent">
+      <div class="tile-head"><span>Current</span><span class="unit">A</span></div>
+      <div class="tile-val"><b id="valCurrent">—</b></div>
+      <div class="tile-bar"><div id="barCurrent"></div></div>
+    </div>
+    <div class="tile" id="tileTemp">
+      <div class="tile-head"><span>Temperature</span><span class="unit">°C</span></div>
+      <div class="tile-val"><b id="valTemp">—</b></div>
+      <div class="tile-bar"><div id="barTemp"></div></div>
+    </div>
+    <div class="tile" id="tileVib">
+      <div class="tile-head"><span>Vibration</span><span class="unit">g</span></div>
+      <div class="tile-val"><b id="valVib">—</b></div>
+      <div class="tile-bar"><div id="barVib"></div></div>
+    </div>
+    <div class="tile" id="tileSound">
+      <div class="tile-head"><span>Sound</span><span class="unit">raw</span></div>
+      <div class="tile-val"><b id="valSound">—</b></div>
+      <div class="tile-bar"><div id="barSound"></div></div>
+    </div>
+  </section>
+
+  <section class="grid-2">
+    <div class="card">
+      <h2>Multimodal Trend (last 60 samples)</h2>
+      <div style="height:240px"><canvas id="trendChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Fault Distribution</h2>
+      <div style="height:240px"><canvas id="faultChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Fault / Event Log</h2>
+    <div class="log-controls">
+      <button id="clearLog" class="btn">Clear</button>
+      <span class="log-count" id="logCount">0 events</span>
+    </div>
+    <div class="log-table-wrap">
+      <table class="log-table">
+        <thead>
+          <tr>
+            <th>Time</th><th>State</th><th>Current</th><th>Temp</th>
+            <th>Vibration</th><th>Sound</th><th>Faults</th>
+          </tr>
+        </thead>
+        <tbody id="logBody">
+          <tr><td colspan="7" class="empty">Waiting for data…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <span>ESP32 · Firebase RTDB · Edge AI</span>
+    <span id="uptimeText">Uptime: —</span>
+  </footer>
+
+</main>
+
+<script>
+/* ============================================================
+   Firebase
+   ============================================================ */
+const firebaseConfig = {
+  databaseURL: "https://project-d4d7e-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ============================================================
+   Config
+   ============================================================ */
+const PATH         = "device01";
+const MAX_POINTS   = 60;
+const MAX_LOG_ROWS = 100;
+
+const THRESHOLDS = {
+  soundLow:  1500,
+  vib:       0.30,
+  temp:      32.0,
+  currentMin: 0.10,
+  currentMax: 0.20
+};
+
+const state = {
+  history: [],
+  log: [],
+  lastFault: false,
+  bootTime: Date.now(),
+  charts: {}
+};
+
+const $ = id => document.getElementById(id);
+const round = (v, d=2) => Number(v).toFixed(d);
+const fmtTime = ts => new Date(ts).toLocaleTimeString();
+
+/* ============================================================
+   Edge AI
+   ============================================================ */
+function runEdgeAI(sample) {
+  const baseline = {
+    current: { mean: 0.14, std: 0.03 },
+    temp:    { mean: 28.5, std: 2.5  },
+    vib:     { mean: 0.03, std: 0.05 },
+    sound:   { mean: 3100, std: 300  }
+  };
+  const z = (v, b) => Math.abs((v - b.mean) / (b.std || 1));
+
+  const zCur = z(sample.current, baseline.current);
+  const zTmp = z(sample.temp ?? 28.5, baseline.temp);
+  const zVib = z(sample.vib, baseline.vib);
+  const zSnd = z(sample.sound, baseline.sound);
+
+  const w = { cur: 0.30, tmp: 0.25, vib: 0.30, snd: 0.15 };
+  const fused = zCur*w.cur + zTmp*w.tmp + zVib*w.vib + zSnd*w.snd;
+  const anomaly = Math.min(fused / 3, 1);
+  const health = Math.max(0, 1 - anomaly);
+
+  const contributors = [
+    { name: "Current",     score: zCur * w.cur },
+    { name: "Temperature", score: zTmp * w.tmp },
+    { name: "Vibration",   score: zVib * w.vib },
+    { name: "Sound",       score: zSnd * w.snd }
+  ].sort((a,b) => b.score - a.score);
+
+  const dominant = contributors[0].score > 1.0 ? contributors[0].name : "—";
+  const stableHours = (Date.now() - state.bootTime) / 3.6e6;
+  const rulHours = Math.round(health * 200 + Math.min(stableHours, 48));
+
+  return {
+    healthPct: Math.round(health * 100),
+    anomalyScore: round(anomaly, 3),
+    dominant,
+    rulHours
+  };
+}
+
+/* ============================================================
+   Render
+   ============================================================ */
+function renderTiles(s) {
+  const setBar = (id, pct, bad) => {
+    const el = $(id);
+    el.style.width = Math.max(0, Math.min(100, pct)) + "%";
+    el.closest(".tile").classList.toggle("fault", bad);
+  };
+
+  $("valCurrent").textContent = round(s.current_A, 2);
+  setBar("barCurrent", (s.current_A / 0.20) * 100,
+         s.current_A > THRESHOLDS.currentMax || s.current_A < THRESHOLDS.currentMin);
+
+  $("valTemp").textContent = s.temperature_C == null ? "—" : round(s.temperature_C, 1);
+  setBar("barTemp", ((s.temperature_C || 0) - 20) / 25 * 100,
+         (s.temperature_C || 0) > THRESHOLDS.temp);
+
+  $("valVib").textContent = round(s.vibration_g, 2);
+  setBar("barVib", (s.vibration_g / 0.5) * 100, s.vibration_g > THRESHOLDS.vib);
+
+  $("valSound").textContent = s.sound_raw;
+  setBar("barSound", (s.sound_raw / 4095) * 100, s.sound_raw < THRESHOLDS.soundLow);
+}
+
+function renderTwin(payload, ai) {
+  const fault = payload.faults.any;
+  const rotor = $("rotor");
+  rotor.classList.toggle("stop", fault);
+  rotor.classList.toggle("slow", !fault && payload.faults.vibration);
+
+  const glow = $("statusGlow");
+  glow.classList.remove("ok", "warn", "bad");
+  glow.classList.add(fault ? "bad" : (ai.healthPct < 60 ? "warn" : "ok"));
+
+  $("twinState").textContent  = payload.state;
+  $("twinState").className    = fault ? "bad" : "ok";
+  $("twinRelay").textContent  = payload.relay;
+  $("twinBuzzer").textContent = payload.buzzer;
+  $("twinHealth").textContent = ai.healthPct + "%";
+  $("twinHealth").className   = ai.healthPct > 70 ? "ok" : ai.healthPct > 40 ? "warn" : "bad";
+}
+
+function renderAI(ai) {
+  $("healthPct").textContent = ai.healthPct + "%";
+  $("healthBar").style.width = ai.healthPct + "%";
+  $("healthBar").style.background =
+    ai.healthPct > 70 ? "linear-gradient(90deg,#3fb950,#2ea043)" :
+    ai.healthPct > 40 ? "linear-gradient(90deg,#d29922,#b07f11)" :
+                        "linear-gradient(90deg,#f85149,#cc3b34)";
+  $("rulValue").textContent      = ai.rulHours + " h";
+  $("anomalyScore").textContent  = ai.anomalyScore;
+  $("dominantFault").textContent = ai.dominant;
+  $("lastUpdate").textContent    = fmtTime(Date.now());
+}
+
+function renderAlarm(payload) {
+  const banner = $("alarmBanner");
+  if (payload.faults.any) {
+    banner.classList.remove("hidden");
+    const parts = [];
+    if (payload.faults.sound_low)   parts.push("SOUND LOW");
+    if (payload.faults.vibration)   parts.push("VIBRATION");
+    if (payload.faults.temperature) parts.push("OVERHEAT");
+    $("alarmText").textContent = "FAULT: " + (parts.join(" · ") || "UNKNOWN");
+  } else {
+    banner.classList.add("hidden");
+  }
+}
+
+function renderConn(ok) {
+  $("connDot").className = "dot " + (ok ? "on" : "off");
+  $("connText").textContent = ok ? "Live · connected" : "Disconnected";
+}
+
+/* ============================================================
+   Charts
+   ============================================================ */
+function initCharts() {
+  state.charts.trend = new Chart($("trendChart"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [
+        { label: "Current (A)",   data: [], borderColor: "#58a6ff", backgroundColor: "rgba(88,166,255,.10)", tension: .3, fill: true, yAxisID: "y" },
+        { label: "Temp (°C)",     data: [], borderColor: "#f0883e", backgroundColor: "rgba(240,136,62,.10)", tension: .3, fill: true, yAxisID: "y1" },
+        { label: "Vibration (g)", data: [], borderColor: "#3fb950", backgroundColor: "rgba(63,185,80,.10)",  tension: .3, fill: true, yAxisID: "y2" }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 250 },
+      plugins: { legend: { labels: { color: "#8b949e", boxWidth: 12 } } },
+      scales: {
+        x:  { ticks: { color: "#8b949e", maxTicksLimit: 8 }, grid: { color: "rgba(255,255,255,.04)" } },
+        y:  { position: "left",  ticks: { color: "#58a6ff" }, grid: { color: "rgba(255,255,255,.04)" } },
+        y1: { position: "right", ticks: { color: "#f0883e" }, grid: { drawOnChartArea: false } },
+        y2: { display: false }
+      }
+    }
+  });
+
+  state.charts.fault = new Chart($("faultChart"), {
+    type: "doughnut",
+    data: {
+      labels: ["Sound", "Vibration", "Temperature", "Healthy"],
+      datasets: [{
+        data: [0,0,0,1],
+        backgroundColor: ["#f85149", "#d29922", "#f0883e", "#3fb950"],
+        borderColor: "#1c2330", borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { color: "#8b949e", boxWidth: 12 } } }
+    }
+  });
+}
+
+function updateCharts(sample) {
+  state.history.push({
+    t: Date.now(),
+    current: sample.current_A,
+    temp: sample.temperature_C ?? null,
+    vib: sample.vibration_g,
+    sound: sample.sound_raw
+  });
+  if (state.history.length > MAX_POINTS) state.history.shift();
+
+  const c = state.charts.trend;
+  c.data.labels = state.history.map(p =>
+    new Date(p.t).toLocaleTimeString([], { hour12: false, minute: "2-digit", second: "2-digit" }));
+  c.data.datasets[0].data = state.history.map(p => p.current);
+  c.data.datasets[1].data = state.history.map(p => p.temp);
+  c.data.datasets[2].data = state.history.map(p => p.vib);
+  c.update("none");
+}
+
+function updateFaultChart(payload) {
+  const f = payload.faults;
+  state.charts.fault.data.datasets[0].data = [
+    f.sound_low   ? 1 : 0,
+    f.vibration   ? 1 : 0,
+    f.temperature ? 1 : 0,
+    (!f.sound_low && !f.vibration && !f.temperature) ? 1 : 0
+  ];
+  state.charts.fault.update("none");
+}
+
+/* ============================================================
+   Log
+   ============================================================ */
+function addLogRow(payload) {
+  const faults = [];
+  if (payload.faults.sound_low)   faults.push("SOUND");
+  if (payload.faults.vibration)   faults.push("VIB");
+  if (payload.faults.temperature) faults.push("TEMP");
+
+  const isFault = payload.faults.any;
+  const row = {
+    t: Date.now(),
+    state: payload.state,
+    current: payload.sensors.current_A,
+    temp: payload.sensors.temperature_C,
+    vib: payload.sensors.vibration_g,
+    sound: payload.sensors.sound_raw,
+    faults: faults.length ? faults.join(",") : "—",
+    isFault
+  };
+
+  // Log on fault OR if no entry in last 10 s (heartbeat)
+  const lastT = state.log.length ? state.log[0].t : 0;
+  if (isFault || (Date.now() - lastT > 10000)) {
+    state.log.unshift(row);
+    if (state.log.length > MAX_LOG_ROWS) state.log.pop();
+    renderLog();
+  }
+}
+
+function renderLog() {
+  const body = $("logBody");
+  if (!state.log.length) {
+    body.innerHTML = `<tr><td colspan="7" class="empty">Waiting for data…</td></tr>`;
+    $("logCount").textContent = "0 events";
+    return;
+  }
+  body.innerHTML = state.log.map(r => `
+    <tr>
+      <td>${fmtTime(r.t)}</td>
+      <td><span class="badge ${r.isFault ? "bad" : "ok"}">${r.state}</span></td>
+      <td>${round(r.current, 2)} A</td>
+      <td>${r.temp == null ? "—" : round(r.temp, 1) + " °C"}</td>
+      <td>${round(r.vib, 2)} g</td>
+      <td>${r.sound}</td>
+      <td>${r.faults}</td>
+    </tr>
+  `).join("");
+  $("logCount").textContent = state.log.length + " events";
+}
+
+$("clearLog").addEventListener("click", () => {
+  state.log = [];
+  renderLog();
+});
+
+/* ============================================================
+   Main — Firebase listener
+   ============================================================ */
+function handleUpdate(payload) {
+  if (!payload || !payload.sensors) return;
+
+  const ai = runEdgeAI({
+    current: payload.sensors.current_A,
+    temp:    payload.sensors.temperature_C,
+    vib:     payload.sensors.vibration_g,
+    sound:   payload.sensors.sound_raw
+  });
+
+  renderTiles(payload.sensors);
+  renderTwin(payload, ai);
+  renderAI(ai);
+  renderAlarm(payload);
+  updateCharts(payload.sensors);
+  updateFaultChart(payload);
+  addLogRow(payload);
+
+  if (payload.uptime_ms != null) {
+    const sec = Math.floor(payload.uptime_ms / 1000);
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    $("uptimeText").textContent = `Uptime: ${h}h ${m}m ${s}s`;
+  }
+}
+
+function init() {
+  initCharts();
+
+  db.ref(PATH).on("value", snap => {
+    renderConn(true);
+    const v = snap.val();
+    if (v) handleUpdate(v);
+  }, err => {
+    console.error(err);
+    renderConn(false);
+  });
+
+  db.ref(".info/connected").on("value", s => {
+    const connected = s.val() === true;
+    renderConn(connected);
+    if (connected) {
+      // reload snapshot if we missed updates while offline
+      db.ref(PATH).once("value").then(snap => {
+        const v = snap.val();
+        if (v) handleUpdate(v);
+      });
+    }
+  });
+}
+
+init();
+</script>
+
+</body>
+</html>
